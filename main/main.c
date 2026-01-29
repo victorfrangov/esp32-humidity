@@ -1,5 +1,6 @@
 #include "main.h"
 #include "weather.h"
+#include <stdarg.h>
 
 // Menu state model
 static Screen current_screen = SCREEN_MAIN;
@@ -85,15 +86,86 @@ static void uart_init(void) {
 }
 
 static void update_screenf(const char* fmt, ...) {
-    char buffer[64];
+    char text[256];
     va_list args;
     va_start(args, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    vsnprintf(text, sizeof(text), fmt, args);
     va_end(args);
 
     u8g2_ClearBuffer(&u8g2);
     u8g2_SetFont(&u8g2, u8g2_font_ncenB08_tr);
-    u8g2_DrawStr(&u8g2, 0, 15, buffer);
+
+    const int max_w = u8g2_GetDisplayWidth(&u8g2);
+    const int line_h = 10;
+    int y = 12;
+
+    char line[64] = {0};
+    char word[32] = {0};
+    const char* p = text;
+
+    while (*p) {
+        if (*p == '\n') {
+            if (line[0]) {
+                u8g2_DrawStr(&u8g2, 0, y, line);
+                y += line_h;
+                line[0] = '\0';
+            }
+            p++;
+            continue;
+        }
+
+        while (*p == ' ') p++;
+
+        int wi = 0;
+        while (*p && *p != ' ' && *p != '\n' && wi < (int)sizeof(word) - 1) {
+            word[wi++] = *p++;
+        }
+        word[wi] = '\0';
+        if (word[0] == '\0') break;
+
+        char trial[64];
+        if (line[0]) {
+            strlcpy(trial, line, sizeof(trial));
+            strlcat(trial, " ", sizeof(trial));
+            strlcat(trial, word, sizeof(trial));
+        } else {
+            strlcpy(trial, word, sizeof(trial));
+        }
+
+        if (u8g2_GetStrWidth(&u8g2, trial) > max_w) {
+            if (line[0]) {
+                u8g2_DrawStr(&u8g2, 0, y, line);
+                y += line_h;
+                snprintf(line, sizeof(line), "%s", word);
+            } else {
+                u8g2_DrawStr(&u8g2, 0, y, word);
+                y += line_h;
+                line[0] = '\0';
+            }
+        } else {
+            snprintf(line, sizeof(line), "%s", trial);
+        }
+    }
+
+    if (line[0]) {
+        u8g2_DrawStr(&u8g2, 0, y, line);
+    }
+
+    u8g2_SendBuffer(&u8g2);
+}
+
+static void weather_ui_update(const char* text, const char* icon) {
+    u8g2_ClearBuffer(&u8g2);
+
+    const WeatherIcon* ic = weather_bitmap_from_code(icon);
+    if (ic) {
+        u8g2_DrawXBMP(&u8g2, 0, 0, ic->w, ic->h, ic->data);
+    }
+
+    // Text (wrapped) to the right of icon
+    u8g2_SetFont(&u8g2, u8g2_font_ncenB08_tr);
+    draw_wrapped_text(28, 12, u8g2_GetDisplayWidth(&u8g2) - 28, text);
+
     u8g2_SendBuffer(&u8g2);
 }
 
@@ -140,7 +212,7 @@ static void action_wifi(void) {
     if (!wifi_connected) {
         esp_err_t status = connect_wifi();
         if (status != WIFI_SUCCESS) {
-            update_screenf("WiFi failed");
+            update_screenf("WiFi connection failed");
             return;
         }
         wifi_connected = true;
@@ -149,10 +221,10 @@ static void action_wifi(void) {
 
 static void action_weather_mtl(void) {
     if (wifi_connected) {
-        weather_fetch_city("Montreal", update_screenf);
+        weather_fetch_city("Montreal", weather_ui_update);
         set_screen(SCREEN_WEATHER_MTL);
     } else {
-        update_screenf("WiFi failed");
+        weather_ui_update("WiFi failed", "");
     }
 }
 
@@ -241,6 +313,61 @@ static void set_screen(Screen s) {
     }
 }
 
+static void draw_wrapped_text(int x, int y, int max_w, const char* text) {
+    const int line_h = 10;
+    char line[64] = {0};
+    char word[32] = {0};
+    const char* p = text;
+
+    while (*p) {
+        if (*p == '\n') {
+            if (line[0]) {
+                u8g2_DrawStr(&u8g2, x, y, line);
+                y += line_h;
+                line[0] = '\0';
+            }
+            p++;
+            continue;
+        }
+
+        while (*p == ' ') p++;
+
+        int wi = 0;
+        while (*p && *p != ' ' && *p != '\n' && wi < (int)sizeof(word) - 1) {
+            word[wi++] = *p++;
+        }
+        word[wi] = '\0';
+        if (word[0] == '\0') break;
+
+        char trial[64];
+        if (line[0]) {
+            strlcpy(trial, line, sizeof(trial));
+            strlcat(trial, " ", sizeof(trial));
+            strlcat(trial, word, sizeof(trial));
+        } else {
+            strlcpy(trial, word, sizeof(trial));
+        }
+
+        if (u8g2_GetStrWidth(&u8g2, trial) > max_w) {
+            if (line[0]) {
+                u8g2_DrawStr(&u8g2, x, y, line);
+                y += line_h;
+                strlcpy(line, word, sizeof(line));
+            } else {
+                u8g2_DrawStr(&u8g2, x, y, word);
+                y += line_h;
+                line[0] = '\0';
+            }
+        } else {
+            strlcpy(line, trial, sizeof(line));
+        }
+    }
+
+    if (line[0]) {
+        u8g2_DrawStr(&u8g2, x, y, line);
+    }
+}
+
 static void action_placeholder(void) { update_screenf("Not implemented"); }
 static void action_open_weather(void) { set_screen(SCREEN_WEATHER); }
 static void action_tnh(void) { set_screen(SCREEN_TNH); }
@@ -260,17 +387,7 @@ void app_main(void) {
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    
-    // ble_init();
-    
-    // connect to tcp server
-	// status = connect_tcp_server(update_screenf);
-	// if (TCP_SUCCESS != status)
-	// {
-	// 	ESP_LOGI(WIFI_TAG, "Failed to connect to remote server, dying...");
-    //     update_screenf("TCP Failed", "string");
-	// 	// return;
-	// }
+
     set_screen(SCREEN_MAIN); // Start on main menu
 
     uint8_t* data = (uint8_t*) malloc(BUF_SIZE);
@@ -280,8 +397,6 @@ void app_main(void) {
 
         if (len > 0) {
             data[len] = '\0';
-            // ESP_LOGI("BUFFER", "len=%d data='%.*s'", len, len, (char*)data); Use this to grab required keys data
-            // ESP_LOG_BUFFER_HEX("BUFFER", data, len);
             handle_input(data, len);
         }
 
@@ -293,7 +408,7 @@ void app_main(void) {
         }
         vTaskDelay(pdMS_TO_TICKS(100));
 
-        // Add a condition to exit the loop if needed
+        // Add a condition to exit the loop if needed SLEEP?
         // Example: running = false; // Set this based on some condition
     }
     free(data);

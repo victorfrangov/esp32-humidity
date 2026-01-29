@@ -89,7 +89,9 @@ static void i2c_master_init(void);
 static void u8g2_init(void);
 static void uart_init(void);
 static void update_screenf(const char* fmt, ...);
+static void weather_ui_update(const char* text, const char* icon);
 static void draw_wifi_info(void);
+static void draw_wrapped_text(int x, int y, int max_w, const char* text);
 static void handle_input(const uint8_t* data, int len);
 void app_main(void);
 

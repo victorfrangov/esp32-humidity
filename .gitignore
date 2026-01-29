@@ -5,6 +5,7 @@ build/
 wifi_config.h
 .cache/
 managed_components/
+main/secrets.h
 
 # Ignore object files and binaries
 *.o
