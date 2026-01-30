@@ -1,5 +1,4 @@
 #include "weather_icons.h"
-#include <string.h>
 
 // 24x24 bitmap
 static const uint8_t i_01d[] = {
@@ -131,7 +130,7 @@ static const WeatherIcon icons[] = {
     {"50n", i_50d_n, 24, 24}
 };
 
-// Pass in 09d for exemple and returns i_09d_n XBM bitmap, returns NULL if none found
+// Pass in 09d for exemple and returns the correct WeatherIcon pointer, returns NULL if none found
 const WeatherIcon* weather_bitmap_from_code(const char* code) {
     if (!code) return NULL;
     for (size_t i = 0; i < sizeof(icons)/sizeof(icons[0]); ++i) {

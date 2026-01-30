@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <string.h>
 
 typedef struct {
     const char* code;        // e.g., "01d"

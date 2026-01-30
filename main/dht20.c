@@ -52,25 +52,17 @@ esp_err_t dht20_read(float *temperature, float *humidity) {
 }
 
 // Function to read DHT20 and update the display
-esp_err_t dht20_display(u8g2_t *u8g2) {
+void draw_dht20(void) {
     float temperature, humidity;
     esp_err_t ret = dht20_read(&temperature, &humidity);
 
-    u8g2_ClearBuffer(u8g2);
-    u8g2_SetFont(u8g2, u8g2_font_ncenB12_tr); // Set font once
+    char msg[64] = {0};
 
     if (ret == ESP_OK) {
-        char temp_str[16], hum_str[16];
-        snprintf(temp_str, sizeof(temp_str), "Temp: %.2fC", temperature);
-        snprintf(hum_str, sizeof(hum_str), "Hum:  %.2f%%", humidity);
-        u8g2_DrawStr(u8g2, 0, 15, temp_str);
-        u8g2_DrawStr(u8g2, 0, 35, hum_str);
+        snprintf(msg, sizeof(msg), "T: %.2fC\n\nH: %.2f%%", temperature, humidity);
+        update_screenf_font(u8g2_font_ncenB12_tr, "%s", msg);
     } else {
-        // Error message already logged by dht20_read
-        u8g2_DrawStr(u8g2, 0, 15, "Sensor");
-        u8g2_DrawStr(u8g2, 0, 35, "Error");
+        snprintf(msg, sizeof(msg), "Sensor Error");
+        update_screenf_font(u8g2_font_ncenB12_tr, "%s", msg);
     }
-
-    u8g2_SendBuffer(u8g2);
-    return ret; // Return the status of the read operation
 }

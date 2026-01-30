@@ -30,11 +30,15 @@
 #include <errno.h>
 #include <stdarg.h>
 
+#include <time.h>
+#include <esp_sntp.h>
 
 #include <u8g2.h>
 #include "wifi.h"
 #include "ble.h"
 #include "dht20.h"
+#include "weather.h"
+#include "geolocation.h"
 
 #include "u8g2_esp32_hal.h"
 
@@ -59,8 +63,10 @@ typedef enum {
     SCREEN_SETTINGS,
     SCREEN_WEATHER,
     SCREEN_WEATHER_MTL,
+    SCREEN_TIME,
     SCREEN_TNH,
     SCREEN_WIFI,
+    SCREEN_GEO,
     SCREEN_BT
 } Screen;
 
@@ -80,7 +86,9 @@ typedef struct {
 typedef enum {
     KEY_NONE,
     KEY_UP,
+    KEY_LEFT,
     KEY_DOWN,
+    KEY_RIGHT,
     KEY_ENTER,
     KEY_ESC
 } Key;
@@ -88,11 +96,18 @@ typedef enum {
 static void i2c_master_init(void);
 static void u8g2_init(void);
 static void uart_init(void);
-static void update_screenf(const char* fmt, ...);
+void update_screenf(const char* fmt, ...);
+void update_screenf_font(const uint8_t* font, const char* fmt, ...);
 static void weather_ui_update(const char* text, const char* icon);
 static void draw_wifi_info(void);
+static void draw_time(void);
+static void draw_geo(void);
 static void draw_wrapped_text(int x, int y, int max_w, const char* text);
 static void handle_input(const uint8_t* data, int len);
+static void go_back_one_menu(void);
+static void draw_wrapped_text_around_rect(int x, int y, int max_w,
+                                          int rx, int ry, int rw, int rh,
+                                          const char* text);
 void app_main(void);
 
 // Forward declarations
@@ -100,7 +115,9 @@ static void set_screen(Screen s);
 static void action_placeholder(void);
 static void action_open_weather(void);
 static void action_tnh(void);
+static void action_time(void);
 static void action_weather_mtl(void);
+static void action_geo(void);
 static void action_open_settings(void);
 static void action_wifi(void);
 static void action_bt(void);
