@@ -1,7 +1,11 @@
 #ifndef WEATHER
 #define WEATHER
 
+#include <esp_http_client.h>
+#include <math.h>
+#include <cJSON.h>
 #include "wifi.h"
+#include "secrets.h"
 
 typedef struct {
     bool ok;

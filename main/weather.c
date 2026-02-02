@@ -1,12 +1,4 @@
 #include "weather.h"
-#include <esp_http_client.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include "cJSON.h"
-#include <esp_log_buffer.h>
-#include "secrets.h"
 
 #define WEATHER_API_KEY API_KEY
 
@@ -95,14 +87,12 @@ esp_err_t weather_fetch_city(const char *city, weather_update_callback_t update_
             cJSON_Delete(root);
         } else {
             info.ok = false;
-            strncpy(info.err, "JSON parse error", sizeof(info.err) - 1);
-            info.err[sizeof(info.err) - 1] = '\0';
+            strlcpy(info.err, "JSON parse error", sizeof(info.err));
             update_ui(&info);
         }
     } else {
         info.ok = false;
-        strncpy(info.err, "HTTP no body", sizeof(info.err) - 1);
-        info.err[sizeof(info.err) - 1] = '\0';
+        strlcpy(info.err, "HTTP no body", sizeof(info.err));
         update_ui(&info);
     }
     free(buffer);

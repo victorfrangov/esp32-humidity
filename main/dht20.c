@@ -59,7 +59,7 @@ void draw_dht20(void) {
     char msg[64] = {0};
 
     if (ret == ESP_OK) {
-        snprintf(msg, sizeof(msg), "T: %.2fC\n\nH: %.2f%%", temperature, humidity);
+        snprintf(msg, sizeof(msg), "T: %.2fC\nH: %.2f%%", temperature, humidity);
         update_screenf_font(u8g2_font_ncenB12_tr, "%s", msg);
     } else {
         snprintf(msg, sizeof(msg), "Sensor Error");

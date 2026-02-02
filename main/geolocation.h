@@ -1,5 +1,7 @@
 #pragma once
-#include <stdbool.h>
+#include <esp_http_client.h>
+#include "cJSON.h"
+#include "esp_log.h"
 
 typedef struct {
     char countryCode[4];

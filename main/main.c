@@ -1,8 +1,4 @@
 #include "main.h"
-#include "weather.h"
-#include "esp_heap_caps.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 static void i2c_master_init(void);
 static void u8g2_init(void);
