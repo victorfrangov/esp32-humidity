@@ -10,6 +10,7 @@
 #include <u8g2.h>
 #include <esp_heap_caps.h>
 #include <unistd.h> // For STDIN_FILENO
+#include <u8g2_esp32_hal.h>
 
 #include "wifi.h"
 #include "ble.h"
@@ -73,7 +74,6 @@ typedef enum {
 
 void update_screenf(const char* fmt, ...);
 void update_screenf_font(const uint8_t* font, const char* fmt, ...);
-void weather_ui_update(const WeatherInfo* w);
 
 void app_main(void);
 

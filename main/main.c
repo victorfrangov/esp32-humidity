@@ -6,12 +6,11 @@ static void uart_init(void);
 static void draw_wifi_info(void);
 static void draw_time(void);
 static void draw_geo(void);
-static void draw_wrapped_text(int x, int y, int max_w, const char* text);
+// static void draw_wrapped_text(int x, int y, int max_w, const char* text);
 static void handle_input(const uint8_t* data, int len);
 static void go_back_one_menu(void);
 static void set_screen(Screen s);
 static void status_bar_update_if_changed(void);
-static void draw_status_bar(void);
 static void action_placeholder(void);
 static void action_open_weather(void);
 static void action_tnh(void);
@@ -22,7 +21,12 @@ static void action_open_settings(void);
 static void action_wifi(void);
 static void action_bt(void);
 static Key decode_key(const uint8_t* data, int len);
+static void weather_ui_update(const WeatherInfo* w);
 static void log_mem_usage(void);
+static int get_wifi_bars(void);
+static void draw_status_bar(void);
+static void draw_wifi_bars(const int w, const int bars);
+
 
 // Menu state model
 static Screen current_screen = SCREEN_MAIN;
@@ -36,6 +40,7 @@ static bool wifi_connected = false;
 static GeoInfo geo_info = {0};
 static bool s_last_wifi_connected = false;
 static char s_last_bat_label[8] = "BAT?";
+static int s_last_wifi_bars = -1;
 
 // Main menu
 static const MenuItem main_menu_items[] = {
@@ -195,7 +200,7 @@ void update_screenf(const char* fmt, ...) {
     va_end(args);
 }
 
-void weather_ui_update(const WeatherInfo* w) {
+static void weather_ui_update(const WeatherInfo* w) {
     u8g2_ClearBuffer(&u8g2);
     draw_status_bar();
     u8g2_SetFont(&u8g2, u8g2_font_ncenB08_tr);
@@ -426,76 +431,115 @@ static void set_screen(Screen s) {
     }
 }
 
-// Is this method even needed?
-static void draw_wrapped_text(int x, int y, int max_w, const char* text) {
-    const int line_h = (u8g2_GetAscent(&u8g2) - u8g2_GetDescent(&u8g2)) + 2;
-    char line[64] = {0};
-    char word[64] = {0};
-    const char* p = text;
-
-    while (*p) {
-        if (*p == '\n') {
-            if (line[0]) {
-                u8g2_DrawStr(&u8g2, x, y, line);
-                y += line_h;
-                line[0] = '\0';
-            } else {
-                y += line_h; // blank line
-            }
-            p++;
-            continue;
-        }
-
-        while (*p == ' ') p++;
-
-        int wi = 0;
-        while (*p && *p != ' ' && *p != '\n' && wi < (int)sizeof(word) - 1) {
-            word[wi++] = *p++;
-        }
-        word[wi] = '\0';
-        if (!word[0]) break;
-
-        char trial[64];
-        if (line[0]) {
-            strlcpy(trial, line, sizeof(trial));
-            strlcat(trial, " ", sizeof(trial));
-            strlcat(trial, word, sizeof(trial));
-        } else {
-            strlcpy(trial, word, sizeof(trial));
-        }
-
-        if (u8g2_GetStrWidth(&u8g2, trial) <= max_w) {
-            strlcpy(line, trial, sizeof(line));
-            continue;
-        }
-
-        if (line[0]) {
-            u8g2_DrawStr(&u8g2, x, y, line);
-            y += line_h;
-            line[0] = '\0';
-        } else {
-            // Single long word: draw anyway
-            u8g2_DrawStr(&u8g2, x, y, word);
-            y += line_h;
-        }
-    }
-
-    if (line[0]) {
-        u8g2_DrawStr(&u8g2, x, y, line);
-    }
-}
+// static void draw_wrapped_text(int x, int y, int max_w, const char* text) {
+//     const int line_h = (u8g2_GetAscent(&u8g2) - u8g2_GetDescent(&u8g2)) + 2;
+//     char line[64] = {0};
+//     char word[64] = {0};
+//     const char* p = text;
+//
+//     while (*p) {
+//         if (*p == '\n') {
+//             if (line[0]) {
+//                 u8g2_DrawStr(&u8g2, x, y, line);
+//                 y += line_h;
+//                 line[0] = '\0';
+//             } else {
+//                 y += line_h; // blank line
+//             }
+//             p++;
+//             continue;
+//         }
+//
+//         while (*p == ' ') p++;
+//
+//         int wi = 0;
+//         while (*p && *p != ' ' && *p != '\n' && wi < (int)sizeof(word) - 1) {
+//             word[wi++] = *p++;
+//         }
+//         word[wi] = '\0';
+//         if (!word[0]) break;
+//
+//         char trial[64];
+//         if (line[0]) {
+//             strlcpy(trial, line, sizeof(trial));
+//             strlcat(trial, " ", sizeof(trial));
+//             strlcat(trial, word, sizeof(trial));
+//         } else {
+//             strlcpy(trial, word, sizeof(trial));
+//         }
+//
+//         if (u8g2_GetStrWidth(&u8g2, trial) <= max_w) {
+//             strlcpy(line, trial, sizeof(line));
+//             continue;
+//         }
+//
+//         if (line[0]) {
+//             u8g2_DrawStr(&u8g2, x, y, line);
+//             y += line_h;
+//             line[0] = '\0';
+//         } else {
+//             // Single long word: draw anyway
+//             u8g2_DrawStr(&u8g2, x, y, word);
+//             y += line_h;
+//         }
+//     }
+//
+//     if (line[0]) {
+//         u8g2_DrawStr(&u8g2, x, y, line);
+//     }
+// }
 
 static void get_battery_label(char* out, size_t out_sz) {
     // Placeholder until you have real battery data
     snprintf(out, out_sz, "BAT?");
 }
 
+static int get_wifi_bars(void) {
+    if (!wifi_connected) return 0;
+
+    wifi_ap_record_t ap_info = {0};
+    if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
+        return 0;
+    }
+
+    int rssi = ap_info.rssi;
+    if (rssi >= -67) return 3;
+    if (rssi >= -75) return 2;
+    if (rssi >= -85) return 1;
+    return 0;
+}
+
+static void draw_wifi_bars(const int w, const int bars) {
+    const int icon_w = (3 * 3) + (2 * 1) + 2; // 3 bars, bar_w=3, gap=1, offset=2
+    const int x = w - icon_w;
+    const int y_bottom = STATUS_BAR_H - 2;
+
+    const int bar_w = 3;
+    const int gap = 1;
+    const int heights[3] = {3, 5, 7};
+
+    for (int i = 0; i < 3; i++) {
+        int h = heights[i];
+        int bx = x + i * (bar_w + gap);
+        int by = y_bottom - h;
+
+        if (bars > i) {
+            u8g2_DrawBox(&u8g2, bx, by, bar_w, h);
+        } else {
+            u8g2_DrawFrame(&u8g2, bx, by, bar_w, h);
+        }
+    }
+}
+
 static void status_bar_update_if_changed(void) {
     char bat[8];
     get_battery_label(bat, sizeof(bat));
     const bool wifi = wifi_connected;
+    const int bars = get_wifi_bars();
 
-    if (wifi == s_last_wifi_connected && strcmp(bat, s_last_bat_label) == 0) {
+    if (wifi == s_last_wifi_connected &&
+        bars == s_last_wifi_bars &&
+        strcmp(bat, s_last_bat_label) == 0) {
         return; // no change, no redraw
     }
 
@@ -505,6 +549,7 @@ static void status_bar_update_if_changed(void) {
 
 static void draw_status_bar(void) {
     const int w = u8g2_GetDisplayWidth(&u8g2);
+    const int bars = get_wifi_bars();
 
     u8g2_SetDrawColor(&u8g2, 0);
     u8g2_DrawBox(&u8g2, 0, 0, w, STATUS_BAR_H);
@@ -517,12 +562,11 @@ static void draw_status_bar(void) {
     get_battery_label(bat, sizeof(bat));
     u8g2_DrawStr(&u8g2, 0, 8, bat);
 
-    // Right: WiFi status
-    const char* wifi = wifi_connected ? "WiFi:!!!" : "WiFi:---";
-    int wifi_w = u8g2_GetStrWidth(&u8g2, wifi);
-    u8g2_DrawStr(&u8g2, w - wifi_w, 8, wifi);
+    // Right: WiFi bars
+    draw_wifi_bars(w, bars);
 
     s_last_wifi_connected = wifi_connected;
+    s_last_wifi_bars = bars;
     strlcpy(s_last_bat_label, bat, sizeof(s_last_bat_label));
 }
 

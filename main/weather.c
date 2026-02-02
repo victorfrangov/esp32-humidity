@@ -30,9 +30,6 @@ esp_err_t weather_fetch_city(const char *city, weather_update_callback_t update_
         return err;
     }
 
-    int status = esp_http_client_get_status_code(client); //Unused
-    esp_http_client_fetch_headers(client); // Unused???
-
     char *buffer = calloc(1, 2048 + 1);
     if (!buffer) {
         esp_http_client_close(client);

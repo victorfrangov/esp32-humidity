@@ -4,10 +4,9 @@
 #include <esp_wifi.h>             // For Wi-Fi functions and configurations
 #include <esp_log.h>              // For logging
 
-#include "u8g2_esp32_hal.h" 
 #include "wifi_config.h"
 
-static const char *WIFI_TAG = "WIFI";
+#define WIFI_TAG "WIFI"
 typedef void (*update_screenf_callback_t)(const char* fmt, ...);
 
 typedef enum {
