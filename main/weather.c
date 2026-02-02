@@ -38,8 +38,8 @@ esp_err_t weather_fetch_city(const char *city, weather_update_callback_t update_
         return err;
     }
 
-    int status = esp_http_client_get_status_code(client);
-    esp_http_client_fetch_headers(client);
+    int status = esp_http_client_get_status_code(client); //Unused
+    esp_http_client_fetch_headers(client); // Unused???
 
     char *buffer = calloc(1, 2048 + 1);
     if (!buffer) {
@@ -76,21 +76,12 @@ esp_err_t weather_fetch_city(const char *city, weather_update_callback_t update_
             cJSON *weather = cJSON_GetObjectItem(root, "weather");
             cJSON *w0 = (weather && cJSON_IsArray(weather)) ? cJSON_GetArrayItem(weather, 0) : NULL;
             cJSON *desc = w0 ? cJSON_GetObjectItem(w0, "description") : NULL;
-            cJSON *icon = w0 ? cJSON_GetObjectItem(w0, "icon") : NULL;
 
-            char desc_buf[32] = {0};
-            if (desc && cJSON_IsString(desc) && desc->valuestring) {
-                strncpy(desc_buf, desc->valuestring, sizeof(desc_buf) - 1);
-                capitalize_first(desc_buf);
-            } else {
-                strncpy(desc_buf, "N/A", sizeof(desc_buf) - 1);
-            }
+            // assume `desc` is a cJSON* for the "description" field
+            const char* desc_str = cJSON_GetStringValue(desc);
+            strlcpy(info.desc, desc_str ? desc_str : "", sizeof(info.desc));
+            capitalize_first(info.desc);
 
-            char icon_code[4] = {0};
-            if (icon && cJSON_IsString(icon) && icon->valuestring) {
-                strncpy(icon_code, icon->valuestring, sizeof(icon_code) - 1);
-            }
-            
             info.ok = true;
             info.temp_c  = (temp && cJSON_IsNumber(temp)) ? (int)lround(temp->valuedouble) : 0;
             info.feels_c  = (feels && cJSON_IsNumber(feels)) ? (int)lround(feels->valuedouble) : 0;
@@ -98,12 +89,6 @@ esp_err_t weather_fetch_city(const char *city, weather_update_callback_t update_
             info.tmax_c = (tmax && cJSON_IsNumber(tmax)) ? (int)lround(tmax->valuedouble) : 0;
             info.wind_kmh  = (wspd && cJSON_IsNumber(wspd)) ? (int)lround(wspd->valuedouble * 3.6) : 0;
             info.hum_pct  = (hum && cJSON_IsNumber(hum)) ? hum->valueint : 0;
-
-            strncpy(info.desc, desc_buf, sizeof(info.desc) - 1);
-            info.desc[sizeof(info.desc) - 1] = '\0';
-
-            strncpy(info.icon, icon_code, sizeof(info.icon) - 1);
-            info.icon[sizeof(info.icon) - 1] = '\0';
 
             update_ui(&info);
 

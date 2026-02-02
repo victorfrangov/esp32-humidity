@@ -1,5 +1,8 @@
 #include "main.h"
 #include "weather.h"
+#include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static void i2c_master_init(void);
 static void u8g2_init(void);
@@ -23,6 +26,7 @@ static void action_open_settings(void);
 static void action_wifi(void);
 static void action_bt(void);
 static Key decode_key(const uint8_t* data, int len);
+static void log_mem_usage(void);
 
 // Menu state model
 static Screen current_screen = SCREEN_MAIN;
@@ -31,7 +35,6 @@ static const Menu* current_menu = NULL;
 static int main_selected = 0;
 static int weather_selected = 0;
 static int settings_selected = 0;
-static TickType_t s_last_status_tick = 0;
 static bool sntp_started = false;
 static bool wifi_connected = false;
 static GeoInfo geo_info = {0};
@@ -203,19 +206,7 @@ void weather_ui_update(const WeatherInfo* w) {
 
     const int ascent = u8g2_GetAscent(&u8g2);
     const int line_h = (u8g2_GetAscent(&u8g2) - u8g2_GetDescent(&u8g2)) + 2;
-    const int disp_w = u8g2_GetDisplayWidth(&u8g2);
-
-    // Icon top-right (below status bar)
-    int icon_x = disp_w; 
-    if (w && w->ok) {
-        const WeatherIcon* ic = weather_bitmap_from_code(w->icon);
-        if (ic) {
-            int rx = disp_w - ic->w - 1;
-            if (rx < 0) rx = 0;
-            icon_x = rx;
-            u8g2_DrawXBMP(&u8g2, rx, STATUS_BAR_H, ic->w, ic->h, ic->data);
-        }
-    }
+    // const int disp_w = u8g2_GetDisplayWidth(&u8g2);
 
     int y = STATUS_BAR_H + ascent;
 
@@ -226,25 +217,21 @@ void weather_ui_update(const WeatherInfo* w) {
         return;
     }
 
-    char msg[192];
+    char msg[64];
     int n = snprintf(msg, sizeof(msg),
-        "T:%dC F:%dC\nH:%u%%\nMin:%dC Max:%dC\nW:%u KM/H\n%s",
+        "T:%dC F:%dC H:%u%%\nMin:%dC Max:%dC\nW:%u KM/H\n%.*s",
         w->temp_c, w->feels_c,
         w->hum_pct,
         w->tmin_c, w->tmax_c,
         w->wind_kmh,
+        24,               // limit desc to 24 chars
         w->desc);
+    ESP_LOGI("temp", "%d", n);
+    log_mem_usage();
     if (n >= (int)sizeof(msg)) {
-        /* truncated — handle if needed */
+        // truncated (still safe)
     }
     update_screenf("%s", msg);
-    
-    // Draw all text on the left
-    // If you want to guarantee it never overwrites the icon area, limit width to (icon_x - 2)
-    (void)icon_x; // keep if you don’t use it yet
-
-
-    u8g2_SendBuffer(&u8g2);
 }
 
 static void draw_wifi_info(void) {
@@ -573,6 +560,22 @@ static void action_weather_mtl(void) {
     } else {
         update_screenf("WiFi connection failed");
     }
+}
+
+static void log_mem_usage(void) {
+    // Heap
+    size_t free_heap = esp_get_free_heap_size();
+    size_t min_free_heap = esp_get_minimum_free_heap_size();
+    size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    size_t min_free_8bit = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
+
+    ESP_LOGI("mem", "heap free=%u min=%u, 8bit free=%u min=%u",
+             (unsigned)free_heap, (unsigned)min_free_heap,
+             (unsigned)free_8bit, (unsigned)min_free_8bit);
+
+    // Stack (current task)
+    UBaseType_t words = uxTaskGetStackHighWaterMark(NULL);
+    ESP_LOGI("mem", "stack high-water: %u bytes", (unsigned)(words * sizeof(StackType_t)));
 }
 
 // Main app

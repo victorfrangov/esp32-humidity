@@ -2,7 +2,6 @@
 #define WEATHER
 
 #include "wifi.h"
-#include "weather_icons.h"
 
 typedef struct {
     bool ok;
@@ -16,7 +15,6 @@ typedef struct {
     unsigned wind_kmh;
 
     char desc[32];
-    char icon[4]; // e.g. "01d"
 } WeatherInfo;
 
 //define the callback here instead of in wifi.h
