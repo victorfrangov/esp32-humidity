@@ -16,19 +16,34 @@ esp_err_t weather_fetch_city(const char *city, weather_update_callback_t update_
     snprintf(url, sizeof(url),
              "http://api.openweathermap.org/data/2.5/weather?q=%s&units=metric&appid=%s",
              city, WEATHER_API_KEY);
-    // UPGRADE TO 3.0 ONECALL INSTEAD OF 2.5, TO GET HOURLY/DAILY DATA
+
     esp_http_client_config_t config = {
         .url = url,
-        .method = HTTP_METHOD_GET
+        .method = HTTP_METHOD_GET,
+        .timeout_ms = 10000
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (!client) return ESP_FAIL;
 
     esp_err_t err = esp_http_client_open(client, 0);
     if (err != ESP_OK) {
+        ESP_LOGE("weather", "open failed: %s", esp_err_to_name(err));
         esp_http_client_cleanup(client);
         return err;
     }
+
+    int64_t clen = esp_http_client_fetch_headers(client);
+    if (clen < 0) {
+        int eno = esp_http_client_get_errno(client);
+        ESP_LOGE("weather", "fetch_headers failed, errno=%d", eno);
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return ESP_FAIL;
+    }
+
+    int status = esp_http_client_get_status_code(client);
+    ESP_LOGI("weather", "status=%d, content_len=%lld", status, clen);
 
     char *buffer = calloc(1, 2048 + 1);
     if (!buffer) {
@@ -46,6 +61,16 @@ esp_err_t weather_fetch_city(const char *city, weather_update_callback_t update_
     }
 
     WeatherInfo info = {0};
+
+    if (status != 200) {
+        info.ok = false;
+        snprintf(info.err, sizeof(info.err), "HTTP error %d", status);
+        update_ui(&info);
+        free(buffer);
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return ESP_FAIL;
+    }
 
     if (total > 0) {
         buffer[total] = '\0';

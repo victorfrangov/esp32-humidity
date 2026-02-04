@@ -20,11 +20,12 @@ static void action_geo(void);
 static void action_open_settings(void);
 static void action_wifi(void);
 static void action_bt(void);
-static Key decode_key(const uint8_t* data, int len);
+static Key decode_key(uint8_t b);
 static void weather_ui_update(const WeatherInfo* w);
 static void log_mem_usage(void);
 static int get_wifi_bars(void);
 static void draw_status_bar(void);
+// static void draw_bt_devices(void);
 static void draw_wifi_bars(const int w, const int bars);
 
 
@@ -331,30 +332,38 @@ static void draw_menu(const Menu* menu) {
 
 // Handling input
 static void handle_input(const uint8_t* data, int len) {
-    Key k = decode_key(data, len);
-    if (k == KEY_NONE) return;
-
-    if (k == KEY_LEFT) {
-        go_back_one_menu();
-        return;
-    }
-
-    if (current_menu) {
-        if (k == KEY_UP && *(current_menu->selected) > 0) {
-            (*(current_menu->selected))--;
-            draw_menu(current_menu);
-        } else if (k == KEY_DOWN && *(current_menu->selected) < (current_menu->count - 1)) {
-            (*(current_menu->selected))++;
-            draw_menu(current_menu);
-        } else if (k == KEY_ENTER || k == KEY_RIGHT) {
-            MenuAction action = current_menu->items[*(current_menu->selected)].action;
-            if (action) action();
-        } else if (k == KEY_ESC) {
-            set_screen(SCREEN_MAIN);
+    if (len > 0) {
+        char hex[128] = {0};
+        int pos = 0;
+        for (int i = 0; i < len && pos < (int)sizeof(hex) - 4; i++) {
+            pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", data[i]);
         }
-    } else {
-        if (k == KEY_ESC) {
-            set_screen(SCREEN_MAIN);
+    }
+    for (int i = 0; i < len; i++) {
+        Key k = decode_key(data[i]);
+        if (k == KEY_NONE) continue;
+        if (k == KEY_LEFT) {
+            go_back_one_menu();
+            continue;
+        }
+
+        if (current_menu) {
+            if (k == KEY_UP && *(current_menu->selected) > 0) {
+                (*(current_menu->selected))--;
+                draw_menu(current_menu);
+            } else if (k == KEY_DOWN && *(current_menu->selected) < (current_menu->count - 1)) {
+                (*(current_menu->selected))++;
+                draw_menu(current_menu);
+            } else if (k == KEY_ENTER || k == KEY_RIGHT) {
+                MenuAction action = current_menu->items[*(current_menu->selected)].action;
+                if (action) action();
+            } else if (k == KEY_ESC) {
+                set_screen(SCREEN_MAIN);
+            }
+        } else {
+            if (k == KEY_ESC) {
+                set_screen(SCREEN_MAIN);
+            }
         }
     }
 }
@@ -380,16 +389,27 @@ static void go_back_one_menu(void) {
     }
 }
 
-static Key decode_key(const uint8_t* data, int len) {
-    if (len >= 3 && data[0] == 0x1B && data[1] == '[') {
-        if (data[2] == 'A') return KEY_UP;
-        if (data[2] == 'B') return KEY_DOWN;
-        if (data[2] == 'C') return KEY_RIGHT;
-        if (data[2] == 'D') return KEY_LEFT;
+static Key decode_key(uint8_t b) {
+    static int esc_state = 0;
+
+    if (esc_state == 0) {
+        if (b == 0x1B) { esc_state = 1; return KEY_NONE; }
+        if (b == '\r' || b == '\n') return KEY_ENTER;
+        return KEY_NONE;
     }
-    if (len == 1 && (data[0] == '\r' || data[0] == '\n')) return KEY_ENTER;
-    if (len == 2 && data[0] == '\r' && data[1] == '\n') return KEY_ENTER;
-    if (len == 1 && data[0] == 0x1B) return KEY_ESC;
+
+    if (esc_state == 1) {
+        if (b == '[') { esc_state = 2; return KEY_NONE; }
+        esc_state = 0;
+        return KEY_ESC;
+    }
+
+    // esc_state == 2
+    esc_state = 0;
+    if (b == 'A') return KEY_UP;
+    if (b == 'B') return KEY_DOWN;
+    if (b == 'C') return KEY_RIGHT;
+    if (b == 'D') return KEY_LEFT;
     return KEY_NONE;
 }
 
@@ -423,6 +443,8 @@ static void set_screen(Screen s) {
         case SCREEN_BT:
             current_menu = NULL;
             update_screenf("Bluetooth Action");
+            // ble_scan_start();
+            // draw_bt_devices();
             break;
         case SCREEN_GEO:
             current_menu = NULL;
@@ -531,6 +553,12 @@ static void draw_wifi_bars(const int w, const int bars) {
     }
 }
 
+// static void draw_bt_devices(void) {
+//     char msg[192] = {0};
+//     ble_get_devices_text(msg, sizeof(msg));
+//     update_screenf("%s", msg);
+// }
+
 static void status_bar_update_if_changed(void) {
     char bat[8];
     get_battery_label(bat, sizeof(bat));
@@ -623,13 +651,15 @@ void app_main(void) {
     i2c_master_init();
     u8g2_init();
     uart_init();
-    
+
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    // ble_init();
 
     set_screen(SCREEN_MAIN); // Start on main menu
 
@@ -653,10 +683,14 @@ void app_main(void) {
             draw_time();
         }
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        // if (current_screen == SCREEN_BT) {
+        //     ble_scan_start();
+        //     if (ble_devices_take_dirty()) {
+        //         draw_bt_devices();
+        //     }
+        // }
 
-        // Add a condition to exit the loop if needed SLEEP?
-        // Example: running = false; // Set this based on some condition
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
     free(data);
 }

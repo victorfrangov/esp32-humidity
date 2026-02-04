@@ -13,7 +13,7 @@
 #include <u8g2_esp32_hal.h>
 
 #include "wifi.h"
-#include "ble.h"
+// #include "ble.h"
 #include "dht20.h"
 #include "weather.h"
 #include "geolocation.h"
